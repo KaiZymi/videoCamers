@@ -5,6 +5,10 @@ const {Content, Sider} = Layout;
 const {Title} = Typography;
 const {Option} = Select;
 const {Search} = Input;
+// http://10.8.0.1:8000
+// http://10.8.0.3:8081
+const BASE_URL = "http://10.8.0.1:8000"
+
 
 type Camera = {
 	id: string;
@@ -28,28 +32,37 @@ type ArchivesCamera = {
 const CameraApp: React.FC = () => {
 	const [cameras, setCameras] = useState<Camera[]>([]);
 	const [streets, setStreets] = useState<Street[]>([]);
-
 	const [selectedCamera, setSelectedCamera] = useState<ArchivesCamera[]>([]);
 	const [filter, setFilter] = useState<'all' | 'street'>('all');
 	const [selectedStreet, setSelectedStreet] = useState<string | null>(null);
 	const [filteredCameras, setFilteredCameras] = useState<Camera[]>([]);
-	const [selectedVideo, setSelectedVideo] = useState<ArchivesCamera>()
-	// const [searchTerm, setSearchTerm] = useState<string>('');
+	const [selectedVideo, setSelectedVideo] = useState<ArchivesCamera | null>(null);
 
 	useEffect(() => {
 		// Получение списка всех камер
-		fetch('http://10.8.0.3:8081/cameras', {
-			method: 'GET',
-		})
-			.then(response => response.json())
-			.then(data => setCameras(data));
+		const fetchCameras = async () => {
+			try {
+				const response = await fetch(`${BASE_URL}/cameras`);
+				const data = await response.json();
+				setCameras(data);
+			} catch (error) {
+				console.error("Ошибка загрузки камер:", error);
+			}
+		};
 
 		// Получение списка всех улиц
-		fetch('http://10.8.0.3:8081/', {
-			method: 'GET',
-		})
-			.then(response => response.json())
-			.then(data => setStreets(data));
+		const fetchStreets = async () => {
+			try {
+				const response = await fetch(`${BASE_URL}/`);
+				const data = await response.json();
+				setStreets(data);
+			} catch (error) {
+				console.error("Ошибка загрузки улиц:", error);
+			}
+		};
+
+		fetchCameras();
+		fetchStreets();
 	}, []);
 
 	useEffect(() => {
@@ -62,71 +75,68 @@ const CameraApp: React.FC = () => {
 		}
 	}, [filter, selectedStreet, cameras]);
 
-	// Функция фильтрации по названию улицы
 	const handleStreetSelect = (streetId: string) => {
 		setSelectedStreet(streetId);
 		setFilter('street');
 	};
 
-	// Обработчик поиска улицы
 	const handleSearch = (value: string) => {
-
 		const street = streets.find(s => s.name.toLowerCase().includes(value.toLowerCase()));
-
 		if (street) {
 			handleStreetSelect(street.id);
 		}
 	};
 
-	// Обработчик клика по камере
-	const handleCameraClick = (camera: Camera) => {
-		// Запрос для получения видеоархива по cameraId
-		fetch(`http://10.8.0.3:8081/archives/${camera.id}`)
-			.then(response => response.json())
-			.then((data: ArchivesCamera[]) => {
-				setSelectedCamera(data);
-			});
+	const handleCameraClick = async (camera: Camera) => {
+		try {
+			const response = await fetch(`${BASE_URL}/archives/${camera.id}`);
+			const data = await response.json();
+			setSelectedCamera(data);
+			setSelectedVideo(null); // Сброс выбранного видео при смене камеры
+			console.log("Загруженные данные по камере:", data);
+		} catch (error) {
+			console.error("Ошибка загрузки данных камеры:", error);
+		}
 	};
 
 	const handleVideoClick = (video: ArchivesCamera) => {
-		setSelectedVideo(video)
-	}
+		setSelectedVideo(video);
+		console.log("Выбрано видео:", video);
+	};
 
 	const selectedCameraData = selectedCamera.length > 0
 		? cameras.find(camera => camera.id === selectedCamera[0].cameraId)
 		: null;
 
-
-	// @ts-ignore
 	return (
-		<Layout style={{height: '100vh'}}>
-			<Sider width={300} style={{background: '#fff', padding: '20px'}}>
-				<Title level={4}>Camera List</Title>
+		<Layout style={{ height: '100vh' }}>
+			<Sider width={300} style={{ background: '#fff', padding: '20px' }}>
+				<Title level={4}>Список камер</Title>
 
 				{/* Фильтрация */}
 				<Radio.Group
 					value={filter}
 					onChange={e => setFilter(e.target.value)}
-					style={{marginBottom: 20}}
+					style={{ marginBottom: 20 }}
 				>
-					<Radio.Button value="all">All</Radio.Button>
-					<Radio.Button value="street">Street</Radio.Button>
+					<Radio.Button value="all">Все</Radio.Button>
+					<Radio.Button value="street">Улица</Radio.Button>
 				</Radio.Group>
 
 				{/* Поиск по названию улицы */}
 				<Search
-					placeholder="Search by street name"
+					placeholder="Поиск по названию улицы"
 					onSearch={handleSearch}
 					enterButton
-					style={{marginBottom: 20}}
+					style={{ marginBottom: 20 }}
 				/>
 
 				{/* Выбор улицы */}
 				{filter === 'street' && (
 					<Select
 						showSearch
-						placeholder="Select a street"
-						style={{width: '100%', marginBottom: 20}}
+						placeholder="Выберите улицу"
+						style={{ width: '100%', marginBottom: 20 }}
 						onChange={handleStreetSelect}
 					>
 						{streets.map(street => (
@@ -146,64 +156,70 @@ const CameraApp: React.FC = () => {
 							key={camera.id}
 							hoverable
 							onClick={() => handleCameraClick(camera)}
-							style={{marginBottom: 10}}
+							style={{ marginBottom: 10 }}
 						>
 							<Card.Meta
 								title={camera.title}
-								description={`Address: ${camera.address}`}
+								description={`Адрес: ${camera.address}`}
 							/>
 						</Card>
 					)}
 				/>
 			</Sider>
-
-			<Content style={{padding: '20px'}}>
-				<Row justify="center" align="middle" style={{height: '100%'}}>
-					<Col span={16}>
-						{selectedCamera && selectedCamera.length > 0 ? (
-
-							<div>
-								{selectedCameraData ? <Title level={3}>{selectedCameraData.title}</Title> :
+			{/*justify="center" align="middle"*/}
+			<Content>
+				<Row style={{ height: '100%' }}>
+					<Col span={6}>
+						{selectedCamera.length > 0 ? (
+							<Sider width={300} style={{ background: '#fff', padding: '20px', height: '100%' }}>
+								{selectedCameraData ? <Title level={5}>{selectedCameraData.title}</Title> :
 									<Title level={3}>Камера не найдена</Title>}
 
 								<List
 									itemLayout="vertical"
 									dataSource={selectedCamera}
-
 									renderItem={(video, index) => (
 										<Card
 											key={video.id}
 											hoverable
 											onClick={() => handleVideoClick(video)}
-											style={{marginBottom: 10}}
+											style={{ marginBottom: 10 }}
 										>
 											<Card.Meta
-												title={`Камера ${index}`}
-												description={`Камера ${index}`}
+												title={`Видео ${index + 1}`}
+												description={`Видео ${index + 1}`}
 											/>
 										</Card>
 									)}
 								/>
-								{selectedVideo ?
+							</Sider>
+						): ""}
+
+					</Col>
+					<Col span={16} style={{alignContent: "center"}}>
+						{selectedCamera.length > 0 ? (
+							<div>
+								{selectedVideo && (
 									<video
 										controls
 										width="100%"
-										height="450px"
+										height="550px"
 										src={selectedVideo.url}
+										style={{ border: '1px solid #E4E4E4' }}
 									>
-										Your browser does not support the video tag.
-									</video> : ''}
-
+										Ваш браузер не поддерживает тег video.
+									</video>
+								)}
 							</div>
 						) : (
-							<Title level={4}>Please select a camera from the list</Title>
+							<Title level={4}>Пожалуйста, выберите камеру из списка</Title>
 						)}
+
 					</Col>
 				</Row>
 			</Content>
 		</Layout>
-	)
-		;
+	);
 };
 
 export default CameraApp;
