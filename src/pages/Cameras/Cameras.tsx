@@ -1,278 +1,281 @@
-import React, {useEffect, useState} from 'react';
-import {Card, Col, Input, Layout, List, Radio, Row, Select, Typography} from 'antd';
+import React, {useContext, useEffect, useState} from 'react';
+import {Button, Card, Drawer, Layout, List, message, Radio, Select, Typography} from 'antd';
+import {useNavigate} from 'react-router-dom';
+import {api} from "../../helpers/api";
+import {CameraContext} from "../../context/CameraContext";
+
 
 const {Content, Sider} = Layout;
 const {Title} = Typography;
-const {Option} = Select;
-const {Search} = Input;
-// http://10.8.0.1:8000
-// http://10.8.0.3:8081
-const BASE_URL = "http://10.8.0.1:8000"
 
-
-type Camera = {
-	id: string;
-	title: string;
-	address: string; // Адрес камеры
-	streetId: string;
-};
-
-type Street = {
-	id: string;
-	name: string;
-};
-
-type ArchivesCamera = {
-	id: string;
-	url: string;
-	cameraId: string;
-};
 
 const CameraApp: React.FC = () => {
-	const [cameras, setCameras] = useState<Camera[]>([]);
-	const [streets, setStreets] = useState<Street[]>([]);
-	const [selectedCamera, setSelectedCamera] = useState<ArchivesCamera[]>([]);
+	// const [user, setUser] = useState<any | null>(null);
 	const [filter, setFilter] = useState<'all' | 'street'>('all');
 	const [selectedStreet, setSelectedStreet] = useState<string | null>(null);
-	const [filteredCameras, setFilteredCameras] = useState<Camera[]>([]);
-	const [selectedVideo, setSelectedVideo] = useState<ArchivesCamera | null>(null);
-	const [videos, setVideos] = useState<ArchivesCamera[]>([])
+	const [filteredCameras, setFilteredCameras] = useState<any[]>([]);
+	const [selectedCamera, setSelectedCamera] = useState<any | null>(null);
+	const [isDrawerVisible, setIsDrawerVisible] = useState(false);
+	const [selectedVideo, setSelectedVideo] = useState<any | null>(null);
+
+	const {
+		cameras, setCameras,
+		streets, setStreets,
+		setVideos, videos,
+		user
+	} = useContext(CameraContext)
 
 	useEffect(() => {
-		// Получение списка всех камер
-		const fetchCameras = async () => {
+
+		const fetchData = async () => {
 			try {
-				const response = await fetch(`${BASE_URL}/cameras`);
-				const data = await response.json();
-				setCameras(data);
+				const [cameraData, streetData, videoData] = await Promise.all([
+					api.fetchCameras(),
+					api.fetchStreets(),
+					api.fetchVideos(),
+				]);
+				setCameras(cameraData);
+				setStreets(streetData);
+				setVideos(videoData);
 			} catch (error) {
-				console.error("Ошибка загрузки камер:", error);
+				console.error('Ошибка загрузки данных:', error);
 			}
 		};
+		fetchData();
+	}, [setCameras, setStreets, setVideos]);
 
-		// Получение списка всех улиц
-		const fetchStreets = async () => {
-			try {
-				const response = await fetch(`${BASE_URL}/`);
-				const data = await response.json();
-				setStreets(data);
-			} catch (error) {
-				console.error("Ошибка загрузки улиц:", error);
-			}
-		};
 
-		const fetchVideos = async () => {
-			try {
-				const response = await fetch(`${BASE_URL}/archives`);
-				const data = await response.json();
-				setVideos(data);
-			} catch (error) {
-				console.error("Ошибка загрузки улиц:", error);
-			}
-		};
 
-		fetchCameras().then()
-		fetchStreets().then()
-		fetchVideos().then()
-	}, []);
+
+	const navigate = useNavigate();
+
+
 
 	useEffect(() => {
-		// Фильтрация камер при изменении фильтра или выбранной улицы
+		console.log('11')
 		if (filter === 'street' && selectedStreet) {
-			const filtered = cameras.filter(camera => camera.streetId === selectedStreet);
+			const filtered = cameras.filter((camera: any) => camera.streetId === selectedStreet);
 			setFilteredCameras(filtered);
+		} else if (filter === 'street' && !selectedStreet) {
+			setFilteredCameras(cameras); // Show all cameras if no street is selected
 		} else {
 			setFilteredCameras(cameras);
 		}
 	}, [filter, selectedStreet, cameras]);
 
-	const handleStreetSelect = (streetId: string) => {
-		setSelectedStreet(streetId);
-		setFilter('street');
-	};
-
-	const handleSearch = (value: string) => {
-		const street = streets.find(s => s.name.toLowerCase().includes(value.toLowerCase()));
-		if (street) {
-			handleStreetSelect(street.id);
-		}
-	};
-
-	const handleCameraClick = async (camera: Camera) => {
+	const handleLogout = async () => {
 		try {
-			const response = await fetch(`${BASE_URL}/archives/${camera.id}`);
-			const data = await response.json();
-			setSelectedCamera(data);
-			setSelectedVideo(null); // Сброс выбранного видео при смене камеры
-			console.log("Загруженные данные по камере:", data);
+			await fetch(`/logout`, {
+				method: 'POST',
+				credentials: 'include',
+			});
+
+			message.success('Вы успешно вышли из системы.');
+			navigate('/login');
 		} catch (error) {
-			console.error("Ошибка загрузки данных камеры:", error);
+			console.error('Ошибка при выходе:', error);
+			message.error('Не удалось выйти из системы.');
 		}
 	};
 
-	const handleVideoClick = (video: ArchivesCamera) => {
-		setSelectedVideo(video);
-		console.log("Выбрано видео:", video);
+	const handleDeleteVideo = async (videoId: string) => {
+		try {
+			const response = await fetch(`/archives/delete/${encodeURIComponent(videoId)}`, {
+				method: 'DELETE',
+				credentials: 'include',
+			});
+
+			if (response.ok) {
+				message.success('Видео удалено успешно!');
+				setVideos(videos.filter((video: any) => video.id !== videoId));
+				setSelectedVideo(null)
+			} else {
+				message.error('Ошибка удаления видео!');
+			}
+		} catch (error) {
+			console.error('Ошибка удаления видео:', error);
+			message.error('Ошибка удаления видео!');
+		}
 	};
 
-	const selectedCameraData = selectedCamera.length > 0
-		? cameras.find(camera => camera.id === selectedCamera[0].cameraId)
-		: null;
+	const handleDeleteCamera = async (cameraId: string) => {
+		try {
+			const response = await fetch(`/cameras/delete/${cameraId}`, {
+				method: 'DELETE',
+				credentials: 'include',
+			});
+
+			if (response.ok) {
+				message.success('Камера удалена успешно!');
+				setCameras(cameras.filter((camera: any) => camera.id !== cameraId));
+				setSelectedCamera(null)
+			} else {
+				message.error('Ошибка удаления камеры!');
+			}
+		} catch (error) {
+			console.error('Ошибка удаления камеры:', error);
+			message.error('Ошибка удаления камеры!');
+		}
+	};
+
+
+	const openVideoDrawer = (camera: any) => {
+		setSelectedCamera(camera);
+		setIsDrawerVisible(true);
+	};
+
+	const closeDrawer = () => {
+		setIsDrawerVisible(false);
+		setSelectedCamera(null);
+	};
+
+	// Для каждой камеры проверим, есть ли у нее видео
+	const getCameraVideos = (cameraId: string) => {
+		return videos.filter((video: any) => video.cameraId === cameraId);
+	};
+
 
 	return (
-		<Layout style={{ height: '100vh' }}>
-			<Sider width={300} style={{ background: '#fff', padding: '20px' }}>
-				<Title level={4}>{filter === 'all' ? 'Список видео' : 'Список камер'}</Title>
+		<Layout style={{height: '100vh'}}>
+			<Sider width={300} style={{background: '#fff', padding: '20px'}}>
+				<div style={{display: 'flex', gap: '10px'}}>
+					<Button type="link" onClick={handleLogout} style={{border: "1px solid gray"}}>
+						Выйти
+					</Button>
+					{user.role === 'admin' && (
+						<Button type="link" onClick={() => {
+							navigate('/admin',);
+						}} style={{border: "1px solid gray"}}>
+							Админ панель
 
-				{/* Фильтрация */}
-				<Radio.Group
-					value={filter}
-					onChange={e => setFilter(e.target.value)}
-					style={{ marginBottom: 20 }}
-				>
+						</Button>)
+					}
+
+				</div>
+
+				<Title level={4}>{filter === 'all' ? 'Список видео' : 'Список камер'}</Title>
+				<Radio.Group value={filter} onChange={(e) => setFilter(e.target.value)} style={{marginBottom: 20}}>
 					<Radio.Button value="all">Все</Radio.Button>
 					<Radio.Button value="street">Улица</Radio.Button>
 				</Radio.Group>
 
 
-				{filter === 'all' && (<>
-						<List
-							itemLayout="vertical"
-							dataSource={videos}
-							renderItem={(video, index) => (
-								<Card
-									key={video.id}
-									hoverable
-									onClick={() => handleVideoClick(video)}
-									style={{ marginBottom: 10 }}
-								>
-									<Card.Meta
-										title={`video ${index}`}
-										description={`id: ${video.id}`}
-									/>
-								</Card>
-							)}
-						/>
-
-					</>
-				)}
-
-				{/* Выбор улицы */}
-				{filter === 'street' && (<>
-					{/* Поиск по названию улицы */}
-					<Search
-						placeholder="Поиск по названию улицы"
-						onSearch={handleSearch}
-						enterButton
-						style={{ marginBottom: 20 }}
+				{filter === 'all' ? (
+					<List
+						itemLayout="vertical"
+						dataSource={videos}
+						renderItem={(video: any) => (
+							<Card key={video.id} hoverable onClick={() => setSelectedVideo(video)}
+								  style={{marginBottom: 10, border: "1px solid #dec8e3"}}>
+								<Card.Meta title={`Видео: ${video.name.toLowerCase()}`}/>
+								{user?.role === 'admin' && (
+									<Button
+										danger
+										style={{marginTop: 10}}
+										onClick={() => handleDeleteVideo(video.id)}
+									>
+										Удалить
+									</Button>
+								)}
+							</Card>
+						)}
 					/>
-					<Select
-						showSearch
-						placeholder="Выберите улицу"
-						style={{ width: '100%', marginBottom: 20 }}
-						onChange={handleStreetSelect}
-					>
-						{streets.map(street => (
-							<Option key={street.id} value={street.id}>
-								{street.name}
-							</Option>
-						))}
-					</Select>
+				) : (
+					<>
 
-						{/* Список камер */}
+						<Select
+							showSearch
+							placeholder="Поиск или выбор улицы"
+							style={{width: '100%', marginBottom: 20}}
+							value={selectedStreet}
+							onChange={(value) => setSelectedStreet(value)} // Устанавливает выбранную улицу
+
+							filterOption={(input, option) => {
+								// Явное приведение типа для label, чтобы TypeScript знал, что это строка
+								const label = option?.label as string;
+								return label?.toLowerCase().includes(input.toLowerCase());
+							}}
+							allowClear // Добавляет кнопку очистки выбранного значения
+							options={streets.map((street: any) => ({
+								value: street.id,
+								label: street.name,
+							}))}
+						>
+
+						</Select>
+
 						<List
 							itemLayout="vertical"
 							dataSource={filteredCameras}
-							renderItem={(camera) => (
-								<Card
-									key={camera.id}
-									hoverable
-									onClick={() => handleCameraClick(camera)}
-									style={{ marginBottom: 10 }}
-								>
-									<Card.Meta
-										title={camera.title}
-										description={`Адрес: ${camera.address}`}
-									/>
-								</Card>
-							)}
-						/>
+							renderItem={(camera) => {
+								// Проверяем, есть ли видео для камеры
+								const cameraVideos = getCameraVideos(camera.id);
 
+								return (
+									<Card
+										key={camera.id}
+										hoverable
+										style={{marginBottom: 10, border: "1px solid #dec8e3"}}
+										onClick={() => openVideoDrawer(camera)}
+									>
+										<Card.Meta title={camera.title} description={`Адрес: ${camera.address}`}/>
+										{cameraVideos.length === 0 && user?.role === 'admin' && (
+											<Button
+												danger
+												style={{marginTop: 10, width: "100px"}}
+												onClick={() => handleDeleteCamera(camera.id)}
+											>
+												Удалить
+											</Button>
+										)}
+									</Card>
+								);
+							}}
+						/>
 					</>
 				)}
-
-
 			</Sider>
-			{/*justify="center" align="middle"*/}
-			<Content>
-				<Row style={{ height: '100%' }}>
-					<Col span={6}>
-						{selectedCamera.length > 0 && filter === 'street' ? (
-							<Sider width={300} style={{ background: '#fff', padding: '20px', height: '100%' }}>
-								{selectedCameraData ? <Title level={5}>{selectedCameraData.title}</Title> :
-									<Title level={3}>Камера не найдена</Title>}
 
-								<List
-									itemLayout="vertical"
-									dataSource={selectedCamera}
-									renderItem={(video, index) => (
-										<Card
-											key={video.id}
-											hoverable
-											onClick={() => handleVideoClick(video)}
-											style={{ marginBottom: 10 }}
-										>
-											<Card.Meta
-												title={`Видео ${index + 1}`}
-												description={`Видео ${index + 1}`}
-											/>
-										</Card>
-									)}
-								/>
-							</Sider>
-						): ""}
-
-					</Col>
-					<Col span={16} style={{alignContent: "center"}}>
-						{filter === 'street' && (<>
-								{selectedCamera.length > 0 ? (
-									<div>
-										{selectedVideo && (
-											<video
-												controls
-												width="100%"
-												height="550px"
-												src={selectedVideo.url}
-												style={{ border: '1px solid #E4E4E4' }}
-											>
-												Ваш браузер не поддерживает тег video.
-											</video>
-										)}
-									</div>
-								) : (
-									<Title level={4}>Пожалуйста, выберите камеру из списка</Title>
-								)}
-							</>
-						)}
-						{filter === 'all' && (<>
-							{selectedVideo ? (
-								<video
-									controls
-									width="100%"
-									height="550px"
-									src={selectedVideo.url}
-									style={{ border: '1px solid #E4E4E4' }}
-								>
-									Ваш браузер не поддерживает тег video.
-								</video>
-							): <Title level={4}>Пожалуйста, выберите видео из списка</Title>}
-
-						</>)}
-
-
-					</Col>
-				</Row>
+			<Content style={{padding: '20px'}}>
+				{selectedVideo ? (
+					<video controls width="100%" height="550px" src={selectedVideo.url}>
+						Ваш браузер не поддерживает видео.
+					</video>
+				) : (
+					<Title level={4}>Выберите видео для просмотра</Title>
+				)}
 			</Content>
+
+
+			{/* Drawer для видео, связанных с камерой */}
+			<Drawer
+				title={`Видео с камеры: ${selectedCamera?.title}`}
+				visible={isDrawerVisible}
+				onClose={closeDrawer}
+				width={400}
+			>
+				<List
+					itemLayout="vertical"
+					dataSource={getCameraVideos(selectedCamera?.id)}
+					renderItem={(video: any) => (
+						<Card key={video.id} hoverable onClick={() => {
+							setIsDrawerVisible(false)
+							setSelectedVideo(video)
+						}} style={{marginBottom: 10, border: "1px solid #dec8e3"}}>
+							<Card.Meta title={video.name}/>
+							{user?.role === 'admin' && (
+								<Button
+									danger
+									style={{marginTop: 10}}
+									onClick={() => handleDeleteVideo(video.id)}
+								>
+									Удалить
+								</Button>
+							)}
+						</Card>
+					)}
+				/>
+			</Drawer>
 		</Layout>
 	);
 };
